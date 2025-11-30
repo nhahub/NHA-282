@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aiops-detector
+  namespace: observability
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aiops-detector
+  namespace: observability
+  labels:
+    app: aiops-detector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aiops-detector
+  template:
+    metadata:
+      labels:
+        app: aiops-detector
+    spec:
+      serviceAccountName: aiops-detector
+      containers:
+        - name: detector
+          image: aiops-detector:latest
+          imagePullPolicy: Never
+          env:
+            - name: PROMETHEUS_URL
+              value: "http://prometheus-k8s.observability.svc.cluster.local:9090"
+            - name: PROM_QUERY
+              value: "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"web\"}[5m])) by (le))"
+            - name: WINDOW_MINUTES
+              value: "180"
+            - name: STEP
+              value: "60s"
+            - name: CONTAMINATION
+              value: "0.05"
+            - name: MIN_POINTS
+              value: "30"
+            - name: ALERT_WEBHOOK
+              valueFrom:
+                secretKeyRef:
+                  name: aiops-webhook
+                  key: url
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "echo ok"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "echo ok"]
+            initialDelaySeconds: 5
+            periodSeconds: 15
+
